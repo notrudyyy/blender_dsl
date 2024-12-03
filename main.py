@@ -41,7 +41,7 @@ def uniform_sampler(items: list, weights: list):
 def weighted_sampler(items: list, weights: list):
     return random.choices(items, weights=weights, k=1)[0]
 
-def create_camera_at_position(target_coord=(0,0,0), r=10, theta=0, phi=0, name="Camera"):
+def create_camera(target_coord=(0,0,0), r=10, theta=0, phi=0, name="Camera"):
     """
     Create a camera positioned at spherical coordinates relative to a target.
     
@@ -120,7 +120,6 @@ def create_object(
         scale=scale
     )
 
-
     # Get the most recently created object
     obj = bpy.context.active_object
     obj.location = location
@@ -144,13 +143,18 @@ def create_collection(
     name: str,
     object_types: list,
     count: list,
-    rand: str,
     placement: str,
+    rand: str = None,
     start_xyz: list = None,
     lin_distance: float = None,
     lin_axis: str = None,
     lin_noisy_offset: float = None,
-    weights: list = None
+    weights: list = None,
+    sph_radius: float = None,
+    plane_corner1: list = None,
+    plane_corner2: list = None,
+    circle_radius: float = None,
+    circle_exclude_axis: str = None,
 ) -> None:
     collection = bpy.data.collections.new(name = name)
     bpy.context.scene.collection.children.link(collection)
@@ -181,10 +185,48 @@ def create_collection(
             obj_offsets_1 = np.zeros((total_num_objs,))
             obj_offsets_2 = np.zeros((total_num_objs,))
         
-        # idxs = []
-        # for axis in axis_to_idx:
-        #     if axis != lin_axis:
+        idxs = []
+        for axis in axis_to_idx:
+            if axis != lin_axis:
+                idxs.append(axis_to_idx[axis])
+        
+        obj_posns[:,  idxs[0]] += obj_offsets_1
+        obj_posns[:,  idxs[1]] += obj_offsets_2
+    elif "plane" in placement:
+        diagonal_vec = (np.array(plane_corner2)-np.array(plane_corner1))
+        obj_posns = np.ndarray((total_num_objs, 3))
+        obj_posns[:] = np.array(plane_corner1) + diagonal_vec/2
+        
+        idxs = []
+        for axis,i in enumerate(diagonal_vec):
+            if not np.isclose(0.0, i):
+                idxs.append(axis)
+        
+        idxs = []
+        for axis in axis_to_idx:
+            if axis != lin_axis:
+                idxs.append(axis_to_idx[axis])
+        
+        obj_posns[:, idxs[0]] += np.random.uniform(-diagonal_vec[idxs[0]]/2, diagonal_vec[idxs[0]]/2)
+        obj_posns[:, idxs[1]] += np.random.uniform(-diagonal_vec[idxs[1]]/2, diagonal_vec[idxs[1]]/2)
+    elif "circle" in placement:
+        r = circle_radius*np.sqrt(np.random.uniform())
+        theta = np.random.uniform() * 2 * np.pi
 
+        idxs = []
+        for axis in axis_to_idx:
+            if axis != circle_exclude_axis:
+                idxs.append(axis_to_idx[axis])
+
+        obj_posns = np.ndarray((total_num_objs, 3))
+        obj_posns[:] = start_xyz
+        obj_posns[:,  idxs[0]] += r * np.cos(theta)
+        obj_posns[:,  idxs[1]] += r * np.sin(theta)
+    elif "sphere" in placement:
+        obj_posns = np.random.normal(size=(total_num_objs, 3))
+        lambda_vals = ((np.random.uniform(0, sph_radius, size=total_num_objs))**(1/3)) / np.sqrt(np.sum(obj_posns**2, axis=1))
+        obj_posns = obj_posns * lambda_vals[:, np.newaxis]
+        obj_posns[:] += start_xyz
     else:
         raise NotImplementedError()
 
@@ -372,11 +414,11 @@ create_light(
     color=(1,0,0),
 )
 
-create_camera_at_position(
+create_camera(
     target_coord=[5,3,4],
     r=20,
-    theta=math.pi/4,
-    phi=math.pi/4,
+    theta=np.pi/4,
+    phi=np.pi/4,
     name="Cacm",
 )
 
