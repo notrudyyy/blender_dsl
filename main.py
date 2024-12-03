@@ -2,66 +2,108 @@
 
 #set default orientation, camera
 
-create_object.prim_id(object_type: str, 
-                    name: str = None, 
-                    location: tuple = (0,0,0), 
-                    scale: tuple = (1,1,1),
-                    rotation: tuple = (0,0,0))
+# create_object.prim_id(object_type: str, 
+#                     name: str = None, 
+#                     location: tuple = (0,0,0), 
+#                     scale: tuple = (1,1,1),
+#                     rotation: tuple = (0,0,0))
 
-create_light.type(name, location, dir, size)
+# create_light.type(name, location, dir, size)
 
-create_collection(name, object_type[], count[], rand)
+# create_collection(name, object_type[], count[], rand)
 
-transform.type(object_name,translation: tuple = None, 
-                          rotation: tuple = None, 
-                          scale: tuple = None,
-                          filter_func: Callable = None)
+# transform.type(object_name,translation: tuple = None, 
+#                           rotation: tuple = None, 
+#                           scale: tuple = None,
+#                           filter_func: Callable = None)
 
-hide(object_name)
-show(object_name)
-save(file)
+# hide(object_name)
+# show(object_name)
+# save(file)
 
-#parser 
-
+#parser
 
 import bpy
-from typing import List, Union, Callable
-from dataclasses import dataclass, field
+import random
+import numpy as np
+import math
+
+for obj in bpy.data.objects:
+    bpy.data.objects.remove(obj)
 
 #global collection and context 
     # Core collections and management
 collections = {}
 
-def create_collection(name: str, object_type: list, count: list, rand: str, placement: str, weights: list = None):
-    """
-    Create a new collection and optionally set it as the current working collection
-    """
-    collection = bpy.data.collections.new(name)
-    # bpy.context.scene.collection.children.link(collection)
-    if (len(count) != len(object_type)):
-        if len(count) != 1:
-            raise ValueError
-        if rand:
-            for i in range(count[0]):
-                create_object(type=rand(object_type, weights=weights), name = None, collection = name)
-        else:
-            for obj_type in object_type:
-                for i in range(count[0]):
-                    create_object(obj_type=obj_type, name=None, collection = name)
-                
-    for obj_type, cnt in zip(object_type, count):
-        for i in range(cnt):
-            create_object(obj_type=obj_type, name=None, collection = name)
+def uniform_sampler(items: list, weights: list):
+    return random.sample(items, 1)[0]
 
-    collections[name] = collection
+def weighted_sampler(items: list, weights: list):
+    return random.choices(items, weights=weights, k=1)[0]
 
-def create_object(obj_type: str, name: None | str, location: tuple = (0,0,0), scale: tuple = (1,1,1), rotation: tuple = (0,0,0)):
+def create_camera_at_position(target_coord=(0,0,0), r=10, theta=0, phi=0, name="Camera"):
     """
-    Add an object to the current collection with flexible creation options
+    Create a camera positioned at spherical coordinates relative to a target.
+    
+    Parameters:
+    - target_coord: (x,y,z) coordinate the camera points towards
+    - r: distance from target
+    - theta: angle with x-axis (in radians)
+    - phi: angle with z-axis (in radians)
+    - name: name of the camera object
     """
+    # Calculate camera position using spherical coordinates
+    x = target_coord[0] + r * math.sin(phi) * math.cos(theta)
+    y = target_coord[1] + r * math.sin(phi) * math.sin(theta)
+    z = target_coord[2] + r * math.cos(phi)
+    
+    # Create camera
+    bpy.ops.object.camera_add(
+        location=(x, y, z),
+        enter_editmode=False,
+        align='VIEW'
+    )
+    
+    # Get the camera object
+    camera = bpy.context.active_object
+    camera.name = name
+    
+    # Calculate rotation to point at target
+    # Vector from camera to target
+    direction = np.array(target_coord) - np.array([x, y, z])
+    
+    # Normalize the direction vector
+    direction = direction / np.linalg.norm(direction)
+    
+    # Calculate Euler angles
+    # Using the standard convention in Blender (XYZ rotation order)
+    # Adapted from Blender's math conventions
+    xy_dist = math.sqrt(direction[0]**2 + direction[1]**2)
+    
+    # Pitch (rotation around X)
+    pitch = -math.atan2(direction[2], xy_dist)
+    
+    # Yaw (rotation around Z)
+    yaw = -math.atan2(direction[1], direction[0])
+    
+    # Roll (rotation around Y) - typically 0 for camera pointing
+    roll = 0
+    
+    # Set camera rotation
+    camera.rotation_euler = (pitch, roll, yaw)
+    
+    return camera
 
+def create_object(
+    obj_type: str,
+    name: None | str,
+    location: tuple = (0,0,0),
+    scale: tuple = (1,1,1),
+    rotation: tuple = (0,0,0),
+    collection: str = None,
+) -> None:
     # Mapping of object creation methods
-    object_creators = {
+    obj_creators = {
         'cube': bpy.ops.mesh.primitive_cube_add,
         'sphere': bpy.ops.mesh.primitive_uv_sphere_add,
         'cylinder': bpy.ops.mesh.primitive_cylinder_add,
@@ -69,17 +111,19 @@ def create_object(obj_type: str, name: None | str, location: tuple = (0,0,0), sc
         'plane': bpy.ops.mesh.primitive_plane_add
     }
 
-    if obj_type not in object_creators:
+    if obj_type not in obj_creators:
         raise ValueError(f"Unsupported object obj_type: {obj_type}")
 
     # Create the object
-    object_creators[object_type](
+    obj_creators[obj_type](
         location=location, 
         scale=scale
     )
 
+
     # Get the most recently created object
     obj = bpy.context.active_object
+    obj.location = location
     
     # Set name if provided
     if name:
@@ -88,105 +132,259 @@ def create_object(obj_type: str, name: None | str, location: tuple = (0,0,0), sc
     # Set rotation
     obj.rotation_euler = rotation
 
-    # Link to current collection
-    self.current_collection.objects.link(obj)
+    # Unlink from default collection and link to specified collection
+    bpy.context.collection.objects.unlink(obj)
     
-    return self
+    if collection and collection in collections:
+        collections[collection].objects.link(obj)
+    else:
+        bpy.context.collection.objects.link(obj)
 
-def apply_material(self, 
-                    color: tuple = (1,1,1,1), 
-                    metallic: float = 0.0, 
-                    roughness: float = 0.5):
-    """
-    Apply a material to the currently selected object
-    """
-    material = bpy.data.materials.new(name="CustomMaterial")
-    material.use_nodes = True
-    
-    # Access principled BSDF node
-    nodes = material.node_tree.nodes
-    principled_node = nodes.get("Principled BSDF")
-    
-    if principled_node:
-        principled_node.inputs['Base Color'].default_value = color
-        principled_node.inputs['Metallic'].default_value = metallic
-        principled_node.inputs['Roughness'].default_value = roughness
+def create_collection(
+    name: str,
+    object_types: list,
+    count: list,
+    rand: str,
+    placement: str,
+    start_xyz: list = None,
+    lin_distance: float = None,
+    lin_axis: str = None,
+    lin_noisy_offset: float = None,
+    weights: list = None
+) -> None:
+    collection = bpy.data.collections.new(name = name)
+    bpy.context.scene.collection.children.link(collection)
+    collections[name] = collection
 
-    # Assign material to active object
-    bpy.context.active_object.data.materials.append(material)
-    
-    return self
+    axis_to_idx = {
+        'x': 0,
+        'y': 1,
+        'z': 2,
+    }
 
-def transform_objects(self, 
-                        translation: tuple = None, 
-                        rotation: tuple = None, 
-                        scale: tuple = None,
-                        filter_func: Callable = None):
-    """
-    Apply transformations to objects in the current collection
-    Optionally filter objects using a custom function
-    """
-    objects = self.current_collection.objects
-    
-    if filter_func:
-        objects = [obj for obj in objects if filter_func(obj)]
-    
-    for obj in objects:
-        if translation:
-            obj.location += translation
-        if rotation:
-            obj.rotation_euler.rotate_axis += rotation
-        if scale:
-            obj.scale *= scale
-    
-    return self
+    random_samplers = {
+        "uniform": uniform_sampler,
+        "weighted": weighted_sampler,
+    }
 
-def batch_duplicate(self, 
-                    count: int, 
-                    pattern: str = 'linear', 
-                    offset: tuple = (1,0,0)):
-    """
-    Batch duplicate objects with different placement strategies
-    """
-    objects = list(self.current_collection.objects)
-    
-    for i in range(count):
-        for obj in objects:
-            new_obj = obj.copy()
-            new_obj.data = obj.data.copy()
-            
-            if pattern == 'linear':
-                new_obj.location = obj.location + (offset[0] * (i+1), 
-                                                    offset[1] * (i+1), 
-                                                    offset[2] * (i+1))
-            elif pattern == 'radial':
-                # Implement radial distribution logic
-                pass
-            
-            self.current_collection.objects.link(new_obj)
-    
-    return self
+    total_num_objs = np.sum(count)
 
-# Example usage demonstration
-def example_scene_creation():
-    builder = BlenderSceneBuilder()
-    
-    (builder
-        .create_collection("SceneParts")
-        .add_object('cube', 'MainCube')
-        .apply_material(color=(1,0,0,1), metallic=0.5)
-        .batch_duplicate(3)
-        .transform_objects(translation=(0,2,0))
-    )
+    if "linear" in placement:
+        obj_posns = np.ndarray((total_num_objs, 3))
+        obj_posns[:] = start_xyz
+        obj_posns[:,axis_to_idx[lin_axis]] = np.arange(total_num_objs)*lin_distance
+        
+        if "gauss" in placement:
+            obj_offsets_1 = np.random.normal(0, lin_noisy_offset, total_num_objs)
+            obj_offsets_2 = np.random.normal(0, lin_noisy_offset, total_num_objs)
+        else:
+            obj_offsets_1 = np.zeros((total_num_objs,))
+            obj_offsets_2 = np.zeros((total_num_objs,))
+        
+        # idxs = []
+        # for axis in axis_to_idx:
+        #     if axis != lin_axis:
 
-# Optional: Add a context manager for more Pythonic usage
-class BlenderScene:
-    def __init__(self):
-        self.builder = BlenderSceneBuilder()
+    else:
+        raise NotImplementedError()
+
+    if (len(count) != len(object_types)):
+        if len(count) != 1:
+            raise ValueError
+        if rand:
+            for i in range(count[0]):
+                create_object(
+                    obj_type=random_samplers[rand](object_types, weights=weights),
+                    name = None,
+                    collection = name,
+                    location=obj_posns[i],
+                )
+        else:
+            for obj_type in object_types:
+                for i in range(count[0]):
+                    create_object(
+                        obj_type=obj_type,
+                        name=None,
+                        collection = name,
+                        location=obj_posns[i],
+                    )
+    else:
+        for idx, (obj_type, cnt) in enumerate(zip(object_types, count)):
+            for i in range(cnt):
+                create_object(
+                    obj_type=obj_type,
+                    name=None,
+                    collection = name,
+                    location=obj_posns[np.sum(count[:idx], dtype=int).item()+i],
+                )
+
+def create_light(
+    name: str,
+    type: str = 'POINT',
+    location: tuple = (0,0,0),
+    energy: float = 1000,
+    color: tuple = (1,1,1),
+    radius: float = 0.1,
+    collection: str = None
+) -> bpy.types.Object:
+    """
+    Create a light in Blender with customizable parameters.
     
-    def __enter__(self):
-        return self.builder
+    Parameters:
+    - name: Name of the light object
+    - type: Light type ('POINT', 'SUN', 'SPOT', 'AREA')
+    - location: 3D coordinates of the light
+    - energy: Light intensity
+    - color: RGB color of the light (0-1 range)
+    - radius: Radius for area lights
+    - collection: Optional collection to link the light to
     
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        # Optional cleanup or finalization
-        pass
+    Returns: Created light object
+    """
+    # List of valid light types
+    valid_types = ['POINT', 'SUN', 'SPOT', 'AREA']
+    
+    # Validate light type
+    if type.upper() not in valid_types:
+        raise ValueError(f"Invalid light type. Choose from {valid_types}")
+    
+    # Create light data
+    light_data = bpy.data.lights.new(name=name, type=type.upper())
+    
+    # Create light object
+    light_object = bpy.data.objects.new(name=name, object_data=light_data)
+    
+    # Set light properties
+    light_object.location = location
+    light_data.energy = energy
+    light_data.color = color
+    
+    # Set radius for area lights
+    if type.upper() == 'AREA':
+        light_data.size = radius
+    
+    # Unlink from default collection and link to specified collection
+    # bpy.context.collection.objects.unlink(light_object)
+    
+    # if collection and collection in collections:
+    #     collections[collection].objects.link(light_object)
+    # else:
+    if collection:
+        collections[collection].objects.link(light_object)
+    else:
+        bpy.context.collection.objects.link(light_object)
+
+def hide_object(name: str, viewport: bool = True, render: bool = True) -> None:
+    """
+    Hide an object by name in viewport and/or render.
+    
+    Parameters:
+    - name: Name of the object to hide
+    - viewport: Whether to hide in viewport (default True)
+    - render: Whether to hide in render (default True)
+    """
+    if name in bpy.data.objects:
+        obj = bpy.data.objects[name]
+        obj.hide_viewport = viewport
+        obj.hide_render = render
+    else:
+        raise ValueError(f"Object '{name}' not found")
+
+def show_object(name: str, viewport: bool = True, render: bool = True) -> None:
+    """
+    Show an object by name in viewport and/or render.
+    
+    Parameters:
+    - name: Name of the object to show
+    - viewport: Whether to show in viewport (default True)
+    - render: Whether to show in render (default True)
+    """
+    if name in bpy.data.objects:
+        obj = bpy.data.objects[name]
+        obj.hide_viewport = not viewport
+        obj.hide_render = not render
+    else:
+        raise ValueError(f"Object '{name}' not found")
+
+def hide_collection(name: str, viewport: bool = True, render: bool = True) -> None:
+    """
+    Hide a collection by name in viewport and/or render.
+    
+    Parameters:
+    - name: Name of the collection to hide
+    - viewport: Whether to hide in viewport (default True)
+    - render: Whether to hide in render (default True)
+    """
+    if name in bpy.data.collections:
+        collection = bpy.data.collections[name]
+        collection.hide_viewport = viewport
+        collection.hide_render = render
+        
+        # Recursively hide all objects in the collection
+        for obj in collection.objects:
+            obj.hide_viewport = viewport
+            obj.hide_render = render
+    else:
+        raise ValueError(f"Collection '{name}' not found")
+
+def show_collection(name: str, viewport: bool = True, render: bool = True) -> None:
+    """
+    Show a collection by name in viewport and/or render.
+    
+    Parameters:
+    - name: Name of the collection to show
+    - viewport: Whether to show in viewport (default True)
+    - render: Whether to show in render (default True)
+    """
+    if name in bpy.data.collections:
+        collection = bpy.data.collections[name]
+        collection.hide_viewport = not viewport
+        collection.hide_render = not render
+        
+        # Recursively show all objects in the collection
+        for obj in collection.objects:
+            obj.hide_viewport = not viewport
+            obj.hide_render = not render
+    else:
+        raise ValueError(f"Collection '{name}' not found")
+
+create_collection(
+    "hi",
+    ["cube", "sphere", "cylinder"],
+    [5,3,4],
+    rand=None,
+    placement="linear",
+    start_xyz=(5,5,5),
+    lin_distance=5.0,
+    lin_axis="x",
+)
+
+create_light(
+    name="White",
+    location=[5,3,10],
+)
+
+create_light(
+    name="Red",
+    location=[5,3,20],
+    collection="hi",
+    type='AREA',
+    color=(1,0,0),
+)
+
+create_camera_at_position(
+    target_coord=[5,3,4],
+    r=20,
+    theta=math.pi/4,
+    phi=math.pi/4,
+    name="Cacm",
+)
+
+create_object(
+    "cube",
+    name="hi"
+)
+
+hide_collection("hi")
+
+bpy.ops.wm.save_mainfile(filepath="./test.blend")
