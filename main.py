@@ -41,17 +41,39 @@ def uniform_sampler(items: list, weights: list):
 def weighted_sampler(items: list, weights: list):
     return random.choices(items, weights=weights, k=1)[0]
 
-def create_camera(target_coord=(0,0,0), r=10, theta=0, phi=0, name="Camera"):
-    """
-    Create a camera positioned at spherical coordinates relative to a target.
+def calc_center_pt(mesh_objs):
+    minA = np.full((3,), np.inf)
+    maxB = np.full((3,), -np.inf)
     
-    Parameters:
-    - target_coord: (x,y,z) coordinate the camera points towards
-    - r: distance from target
-    - theta: angle with x-axis (in radians)
-    - phi: angle with z-axis (in radians)
-    - name: name of the camera object
-    """
+    for ob in mesh_objs:
+        default_corner = np.ndarray((4,))
+        default_corner[3] = 1.0
+        bbox_corners = []
+        for corner in ob.bound_box:
+            default_corner[:3] = corner
+            bbox_corners.append(np.array(ob.matrix_world) @ default_corner)
+        minA = np.min(np.vstack((minA, bbox_corners[0][:3])), 0)
+        maxB = np.max(np.vstack((maxB, bbox_corners[6][:3])), 0)
+
+    center_point = (minA+maxB)/2
+    return center_point
+
+def create_camera(
+    name: str | None,
+    target_coord: list = None,
+    target_collection: str = None,
+    r=10,
+    theta=0,
+    phi=0,
+):
+    if target_collection and target_coord or (not target_collection and not target_coord):
+        raise ValueError()
+    
+    if target_collection:
+        target_coord = calc_center_pt(
+            mesh_objs=[obj for obj in collections[target_collection].objects if obj.type == "MESH"]
+        )
+
     # Calculate camera position using spherical coordinates
     x = target_coord[0] + r * math.sin(phi) * math.cos(theta)
     y = target_coord[1] + r * math.sin(phi) * math.sin(theta)
@@ -66,7 +88,8 @@ def create_camera(target_coord=(0,0,0), r=10, theta=0, phi=0, name="Camera"):
     
     # Get the camera object
     camera = bpy.context.active_object
-    camera.name = name
+    if name:
+        camera.name = name
     
     # Calculate rotation to point at target
     # Vector from camera to target
@@ -201,17 +224,12 @@ def create_collection(
         for axis,i in enumerate(diagonal_vec):
             if not np.isclose(0.0, i):
                 idxs.append(axis)
-        
-        idxs = []
-        for axis in axis_to_idx:
-            if axis != lin_axis:
-                idxs.append(axis_to_idx[axis])
-        
-        obj_posns[:, idxs[0]] += np.random.uniform(-diagonal_vec[idxs[0]]/2, diagonal_vec[idxs[0]]/2)
-        obj_posns[:, idxs[1]] += np.random.uniform(-diagonal_vec[idxs[1]]/2, diagonal_vec[idxs[1]]/2)
+
+        obj_posns[:, idxs[0]] += np.random.uniform(-diagonal_vec[idxs[0]]/2, diagonal_vec[idxs[0]]/2, total_num_objs)
+        obj_posns[:, idxs[1]] += np.random.uniform(-diagonal_vec[idxs[1]]/2, diagonal_vec[idxs[1]]/2, total_num_objs)
     elif "circle" in placement:
-        r = circle_radius*np.sqrt(np.random.uniform())
-        theta = np.random.uniform() * 2 * np.pi
+        r = circle_radius*np.sqrt(np.random.uniform(0, 1, size=total_num_objs))
+        theta = np.random.uniform(0, 2 * np.pi, size=total_num_objs)
 
         idxs = []
         for axis in axis_to_idx:
@@ -224,7 +242,7 @@ def create_collection(
         obj_posns[:,  idxs[1]] += r * np.sin(theta)
     elif "sphere" in placement:
         obj_posns = np.random.normal(size=(total_num_objs, 3))
-        lambda_vals = ((np.random.uniform(0, sph_radius, size=total_num_objs))**(1/3)) / np.sqrt(np.sum(obj_posns**2, axis=1))
+        lambda_vals = (sph_radius*(np.random.uniform(0, 1, size=total_num_objs))**(1/3)) / np.sqrt(np.sum(obj_posns**2, axis=1))
         obj_posns = obj_posns * lambda_vals[:, np.newaxis]
         obj_posns[:] += start_xyz
     else:
@@ -305,12 +323,6 @@ def create_light(
     if type.upper() == 'AREA':
         light_data.size = radius
     
-    # Unlink from default collection and link to specified collection
-    # bpy.context.collection.objects.unlink(light_object)
-    
-    # if collection and collection in collections:
-    #     collections[collection].objects.link(light_object)
-    # else:
     if collection:
         collections[collection].objects.link(light_object)
     else:
@@ -395,11 +407,39 @@ create_collection(
     ["cube", "sphere", "cylinder"],
     [5,3,4],
     rand=None,
-    placement="linear",
-    start_xyz=(5,5,5),
-    lin_distance=5.0,
-    lin_axis="x",
+    placement="sphere",
+    start_xyz=[0,0,20],
+    sph_radius=10.0,
 )
+
+# Linear
+# placement="linear",
+# start_xyz=(5,5,5),
+# lin_distance=5.0,
+# lin_axis="x",
+
+# Linear Gauss
+# placement="linear_gauss",
+# start_xyz=(5,5,5),
+# lin_distance=5.0,
+# lin_axis="x",
+# lin_noisy_offset=4.0
+
+# Plane
+# placement="plane",
+# plane_corner1=[-10,-10,0],
+# plane_corner2=[10,10,0]
+
+# Circle
+# placement="circle",
+# start_xyz=[0,0,10],
+# circle_exclude_axis="z",
+# circle_radius=10.0,
+
+# Sphere
+# placement="sphere",
+# start_xyz=[0,0,20],
+# sph_radius=10.0,
 
 create_light(
     name="White",
@@ -415,11 +455,11 @@ create_light(
 )
 
 create_camera(
-    target_coord=[5,3,4],
-    r=20,
+    name="Cacm",
+    target_collection="hi",
+    r=100,
     theta=np.pi/4,
     phi=np.pi/4,
-    name="Cacm",
 )
 
 create_object(
@@ -427,6 +467,6 @@ create_object(
     name="hi"
 )
 
-hide_collection("hi")
+# hide_collection("hi")
 
-bpy.ops.wm.save_mainfile(filepath="./test.blend")
+bpy.ops.wm.save_mainfile(filepath="./sphere.blend")
