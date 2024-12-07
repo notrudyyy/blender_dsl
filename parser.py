@@ -224,6 +224,25 @@ def create_collection(
 #                 scale: Optional[tuple] = None,
 #                 filter_func: Optional[Callable] = None):
 
+class transform_object:
+    def translate(name: str, location: tuple = (0, 0, 0)):
+        obj = bpy.data.objects.get(name)
+        if not obj:
+            raise ValueError(f"Object {name} not found")
+        obj.location = location
+
+    def rotate(name: str, rotation: tuple = (0, 0, 0)):
+        obj = bpy.data.objects.get(name)
+        if not obj:
+            raise ValueError(f"Object {name} not found")
+        obj.rotation_euler = rotation
+
+    def scale(name: str, scale: tuple = (1, 1, 1)):
+        obj = bpy.data.objects.get(name)
+        if not obj:
+            raise ValueError(f"Object {name} not found")
+        obj.scale = scale
+
 def hide_object(name: str, viewport: bool = True, render: bool = True):
    _hide_object(name, viewport, render)
 
@@ -245,12 +264,14 @@ def save(fp: str):
     """
     bpy.ops.wm.save_mainfile(filepath= fp)
 
-create_object.cube('dabox', location=(5, 6, 7), scale=(0.5, 0.5, 0.5))
+create_object.cube('dabox', location=(5, 5, -5), scale=(0.5, 0.5, 0.5))
 create_light.area(name="myarea", location=(3, 0, 0), radius=5)
 create_light.spot(name="myspot", location=(15, 15, -2), color=(5, 10, 0))
 create_light.sun(name="myson", location=(9, 9, 0), color=(5, 0, 3))
 create_collection(name='stuff', object_types=["cone", "sphere"], count=[2, 3], placement='sphere', start_xyz=(10, 10, -10), sph_radius=5)
 # create_camera("mycam", target_collection='stuff', distance=3)
 _create_camera(name='fixedcam', target_collection='stuff', theta= np.pi/4, phi= np.pi/4, r= 30)
-# bpy.ops.wm.save_mainfile(filepath="./scene.blend")
+
+transform_object.scale('dabox', scale=(3, 3, 3))
+
 save("./scene.blend")
