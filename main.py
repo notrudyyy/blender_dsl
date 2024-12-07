@@ -378,15 +378,62 @@ def _show_collection(name: str, viewport: bool = True, render: bool = True) -> N
     else:
         raise ValueError(f"Collection '{name}' not found")
 
-# _create_collection(
-#     "hi",
-#     ["cube", "sphere", "cylinder"],
-#     [5,3,4],
-#     rand=None,
-#     placement="sphere",
-#     start_xyz=[0,0,20],
-#     sph_radius=10.0,
-# )
+def _transform_object(name: str, 
+                      type: str,
+                      location: tuple = (0, 0, 0),
+                      rotation: tuple = (0, 0, 0),
+                      scale: tuple = (1, 1, 1)):
+    obj = bpy.data.objects.get(name)
+    if not obj:
+        raise ValueError(f"Object {name} not found")
+    if type == 'translate':
+        obj.location.x += location[0]
+        obj.location.y += location[1]
+        obj.location.z += location[2]
+    elif type == 'rotate':
+        obj.rotation_euler.x += rotation[0]
+        obj.rotation_euler.y += rotation[1]
+        obj.rotation_euler.z += rotation[2]
+    elif type == 'scale':
+        obj.scale.x += scale[0]
+        obj.scale.y += scale[1]
+        obj.scale.z += scale[2]
+
+    
+def _transform_collection(name: str,
+                          type: str,
+                          location: tuple = (0, 0, 0),
+                          rotation: tuple = (0, 0, 0),
+                          scale: tuple = (1, 1, 1)):
+    collection = bpy.data.collections[name]
+    if not collection:
+        raise ValueError(f"Collections {name} not found")
+    if type == 'translate':
+        for obj in collection.objects:
+            obj.location.x += location[0]
+            obj.location.y += location[1]
+            obj.location.z += location[2]
+    elif type == 'rotate':
+        for obj in collection.objects:
+            obj.rotation.x += rotation[0]
+            obj.rotation.y += rotation[1]
+            obj.rotation.z += rotation[2]
+    elif type == 'scale':
+        for obj in collection.objects:
+            obj.scale.x += scale[0]
+            obj.scale.y += scale[1]
+            obj.scale.z += scale[2]
+    
+    
+_create_collection(
+    "hi",
+    ["cube", "sphere", "cylinder"],
+    [5,3,4],
+    rand=None,
+    placement="sphere",
+    start_xyz=[0,0,20],
+    sph_radius=10.0,
+)
 
 # Linear
 # placement="linear",
@@ -417,32 +464,32 @@ def _show_collection(name: str, viewport: bool = True, render: bool = True) -> N
 # start_xyz=[0,0,20],
 # sph_radius=10.0,
 
-# _create_light(
-#     name="White",
-#     location=[5,3,10],
-# )
+_create_light(
+    name="White",
+    location=[5,3,10],
+)
 
-# _create_light(
-#     name="Red",
-#     location=[5,3,20],
-#     collection="hi",
-#     type='AREA',
-#     color=(1, 0, 0),
-# )
+_create_light(
+    name="Red",
+    location=[5,3,20],
+    collection="hi",
+    type='AREA',
+    color=(1, 0, 0),
+)
 
-# _create_camera(
-#     name="Cacm",
-#     target_collection="hi",
-#     r=100,
-#     theta=np.pi/4,
-#     phi=np.pi/4,
-# )
+_create_camera(
+    name="Cacm",
+    target_collection="hi",
+    r=30,
+    theta=0,
+    phi=0,
+)
 
-# _create_object(
-#     "cube",
-#     name="hi"
-# )
+_create_object(
+    "cube",
+    name="hi"
+)
 
 # hide_collection("hi")
 
-# bpy.ops.wm.save_mainfile(filepath="./sphere.blend")
+bpy.ops.wm.save_mainfile(filepath="./sphere.blend")
