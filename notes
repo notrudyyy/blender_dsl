@@ -1,0 +1,10 @@
+Camera:
+
+setting default values in parser
+obj types are lowercase, light types are upper(problem?)
+didnt test rand in collection
+camera doesnt point to collection without pi/4: hardcode into camera creation function?
+
+todo:
+convert object to class
+check camera llooks fucking empty

@@ -1,26 +1,3 @@
-# concrete syntax
-
-#set default orientation, camera
-
-# create_object.prim_id(object_type: str, 
-#                     name: str = None, 
-#                     location: tuple = (0,0,0), 
-#                     scale: tuple = (1,1,1),
-#                     rotation: tuple = (0,0,0))
-
-# create_light.type(name, location, dir, size)
-
-# create_collection(name, object_type[], count[], rand)
-
-# transform.type(object_name,translation: tuple = None, 
-#                           rotation: tuple = None, 
-#                           scale: tuple = None,
-#                           filter_func: Callable = None)
-
-# hide(object_name)
-# show(object_name)
-# save(file)
-
 #parser
 
 import bpy
@@ -35,13 +12,13 @@ for obj in bpy.data.objects:
     # Core collections and management
 collections = {}
 
-def uniform_sampler(items: list, weights: list):
+def __uniform_sampler(items: list, weights: list):
     return random.sample(items, 1)[0]
 
-def weighted_sampler(items: list, weights: list):
+def __weighted_sampler(items: list, weights: list):
     return random.choices(items, weights=weights, k=1)[0]
 
-def calc_center_pt(mesh_objs):
+def __calc_center_pt(mesh_objs):
     minA = np.full((3,), np.inf)
     maxB = np.full((3,), -np.inf)
     
@@ -58,7 +35,7 @@ def calc_center_pt(mesh_objs):
     center_point = (minA+maxB)/2
     return center_point
 
-def create_camera(
+def _create_camera(
     name: str | None,
     target_coord: list = None,
     target_collection: str = None,
@@ -70,7 +47,7 @@ def create_camera(
         raise ValueError()
     
     if target_collection:
-        target_coord = calc_center_pt(
+        target_coord = __calc_center_pt(
             mesh_objs=[obj for obj in collections[target_collection].objects if obj.type == "MESH"]
         )
 
@@ -117,7 +94,7 @@ def create_camera(
     
     return camera
 
-def create_object(
+def _create_object(
     obj_type: str,
     name: None | str,
     location: tuple = (0,0,0),
@@ -162,7 +139,7 @@ def create_object(
     else:
         bpy.context.collection.objects.link(obj)
 
-def create_collection(
+def _create_collection(
     name: str,
     object_types: list,
     count: list,
@@ -190,8 +167,8 @@ def create_collection(
     }
 
     random_samplers = {
-        "uniform": uniform_sampler,
-        "weighted": weighted_sampler,
+        "uniform": __uniform_sampler,
+        "weighted": __weighted_sampler,
     }
 
     total_num_objs = np.sum(count)
@@ -253,7 +230,7 @@ def create_collection(
             raise ValueError
         if rand:
             for i in range(count[0]):
-                create_object(
+                _create_object(
                     obj_type=random_samplers[rand](object_types, weights=weights),
                     name = None,
                     collection = name,
@@ -262,7 +239,7 @@ def create_collection(
         else:
             for obj_type in object_types:
                 for i in range(count[0]):
-                    create_object(
+                    _create_object(
                         obj_type=obj_type,
                         name=None,
                         collection = name,
@@ -271,14 +248,14 @@ def create_collection(
     else:
         for idx, (obj_type, cnt) in enumerate(zip(object_types, count)):
             for i in range(cnt):
-                create_object(
+                _create_object(
                     obj_type=obj_type,
                     name=None,
                     collection = name,
                     location=obj_posns[np.sum(count[:idx], dtype=int).item()+i],
                 )
 
-def create_light(
+def _create_light(
     name: str,
     type: str = 'POINT',
     location: tuple = (0,0,0),
@@ -318,7 +295,6 @@ def create_light(
     light_object.location = location
     light_data.energy = energy
     light_data.color = color
-    
     # Set radius for area lights
     if type.upper() == 'AREA':
         light_data.size = radius
@@ -328,7 +304,7 @@ def create_light(
     else:
         bpy.context.collection.objects.link(light_object)
 
-def hide_object(name: str, viewport: bool = True, render: bool = True) -> None:
+def _hide_object(name: str, viewport: bool = True, render: bool = True) -> None:
     """
     Hide an object by name in viewport and/or render.
     
@@ -344,7 +320,7 @@ def hide_object(name: str, viewport: bool = True, render: bool = True) -> None:
     else:
         raise ValueError(f"Object '{name}' not found")
 
-def show_object(name: str, viewport: bool = True, render: bool = True) -> None:
+def _show_object(name: str, viewport: bool = True, render: bool = True) -> None:
     """
     Show an object by name in viewport and/or render.
     
@@ -360,7 +336,7 @@ def show_object(name: str, viewport: bool = True, render: bool = True) -> None:
     else:
         raise ValueError(f"Object '{name}' not found")
 
-def hide_collection(name: str, viewport: bool = True, render: bool = True) -> None:
+def _hide_collection(name: str, viewport: bool = True, render: bool = True) -> None:
     """
     Hide a collection by name in viewport and/or render.
     
@@ -381,7 +357,7 @@ def hide_collection(name: str, viewport: bool = True, render: bool = True) -> No
     else:
         raise ValueError(f"Collection '{name}' not found")
 
-def show_collection(name: str, viewport: bool = True, render: bool = True) -> None:
+def _show_collection(name: str, viewport: bool = True, render: bool = True) -> None:
     """
     Show a collection by name in viewport and/or render.
     
@@ -402,15 +378,15 @@ def show_collection(name: str, viewport: bool = True, render: bool = True) -> No
     else:
         raise ValueError(f"Collection '{name}' not found")
 
-create_collection(
-    "hi",
-    ["cube", "sphere", "cylinder"],
-    [5,3,4],
-    rand=None,
-    placement="sphere",
-    start_xyz=[0,0,20],
-    sph_radius=10.0,
-)
+# _create_collection(
+#     "hi",
+#     ["cube", "sphere", "cylinder"],
+#     [5,3,4],
+#     rand=None,
+#     placement="sphere",
+#     start_xyz=[0,0,20],
+#     sph_radius=10.0,
+# )
 
 # Linear
 # placement="linear",
@@ -441,32 +417,32 @@ create_collection(
 # start_xyz=[0,0,20],
 # sph_radius=10.0,
 
-create_light(
-    name="White",
-    location=[5,3,10],
-)
+# _create_light(
+#     name="White",
+#     location=[5,3,10],
+# )
 
-create_light(
-    name="Red",
-    location=[5,3,20],
-    collection="hi",
-    type='AREA',
-    color=(1,0,0),
-)
+# _create_light(
+#     name="Red",
+#     location=[5,3,20],
+#     collection="hi",
+#     type='AREA',
+#     color=(1, 0, 0),
+# )
 
-create_camera(
-    name="Cacm",
-    target_collection="hi",
-    r=100,
-    theta=np.pi/4,
-    phi=np.pi/4,
-)
+# _create_camera(
+#     name="Cacm",
+#     target_collection="hi",
+#     r=100,
+#     theta=np.pi/4,
+#     phi=np.pi/4,
+# )
 
-create_object(
-    "cube",
-    name="hi"
-)
+# _create_object(
+#     "cube",
+#     name="hi"
+# )
 
 # hide_collection("hi")
 
-bpy.ops.wm.save_mainfile(filepath="./sphere.blend")
+# bpy.ops.wm.save_mainfile(filepath="./sphere.blend")
