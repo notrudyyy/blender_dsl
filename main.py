@@ -1,5 +1,3 @@
-#parser
-
 import bpy
 import random
 import numpy as np
@@ -8,8 +6,6 @@ import math
 for obj in bpy.data.objects:
     bpy.data.objects.remove(obj)
 
-#global collection and context 
-    # Core collections and management
 collections = {}
 
 def __uniform_sampler(items: list, weights: list):
@@ -423,17 +419,19 @@ def _transform_collection(name: str,
             obj.scale.x += scale[0]
             obj.scale.y += scale[1]
             obj.scale.z += scale[2]
+
+def _save_scene(name: str):
+    bpy.ops.wm.save_mainfile(filepath=f"{name}.blend")
     
-    
-_create_collection(
-    "hi",
-    ["cube", "sphere", "cylinder"],
-    [5,3,4],
-    rand=None,
-    placement="sphere",
-    start_xyz=[0,0,20],
-    sph_radius=10.0,
-)
+# _create_collection(
+#     "hi",
+#     ["cube", "sphere", "cylinder"],
+#     [5,3,4],
+#     rand=None,
+#     placement="sphere",
+#     start_xyz=[0,0,20],
+#     sph_radius=10.0,
+# )
 
 # Linear
 # placement="linear",
@@ -464,32 +462,32 @@ _create_collection(
 # start_xyz=[0,0,20],
 # sph_radius=10.0,
 
-_create_light(
-    name="White",
-    location=[5,3,10],
-)
+# _create_light(
+#     name="White",
+#     location=[5,3,10],
+# )
 
-_create_light(
-    name="Red",
-    location=[5,3,20],
-    collection="hi",
-    type='AREA',
-    color=(1, 0, 0),
-)
+# _create_light(
+#     name="Red",
+#     location=[5,3,20],
+#     collection="hi",
+#     type='AREA',
+#     color=(1, 0, 0),
+# )
 
-_create_camera(
-    name="Cacm",
-    target_collection="hi",
-    r=30,
-    theta=0,
-    phi=0,
-)
+# _create_camera(
+#     name="Cacm",
+#     target_collection="hi",
+#     r=30,
+#     theta=0,
+#     phi=0,
+# )
 
-_create_object(
-    "cube",
-    name="hi"
-)
+# _create_object(
+#     "cube",
+#     name="hi"
+# )
 
 # hide_collection("hi")
 
-bpy.ops.wm.save_mainfile(filepath="./sphere.blend")
+# bpy.ops.wm.save_mainfile(filepath="./sphere.blend")

@@ -1,0 +1,62 @@
+start: expression+
+
+expression : /create/ THING params
+           | /operation/ VAR params
+           | /save/
+           | /let/ VAR arithmetic
+           | /let/ VAR /input/ "(" STRING ")"
+
+arithmetic : term PLUS term
+           | term MINUS term
+           | term TIMES term
+           | term DIVIDE term
+
+term       : signed_numeric
+           | VAR
+           | arithmetic
+
+params     : "(" param ("," param)* ")"
+           | "()"
+
+param      : VAR EQUALS data
+
+data       : tuple
+           | prim
+
+prim       : STRING
+           | signed_numeric
+           | arithmetic
+
+signed_numeric : [SIGN] numeric
+
+numeric    : FLOAT
+           | INTEGER
+
+tuple      : "(" prim ("," prim)* ")"
+           | "()"
+
+THING      : "collection"
+           | "object"
+           | "light"
+           | "camera"
+
+VAR        : /[a-zA-Z_][a-zA-Z0-9_]*/
+
+PLUS       : /\+/
+
+MINUS      : /-/
+
+TIMES      : /\*/
+
+DIVIDE     : /\//
+
+EQUALS     : /=/
+
+STRING     : /"[^"]*"/
+
+SIGN       : /[+-]/  // Define a sign terminal
+
+%import common.INT -> INTEGER
+%import common.FLOAT -> FLOAT
+%import common.WS
+%ignore WS
