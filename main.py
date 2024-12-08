@@ -420,6 +420,72 @@ def _transform_collection(name: str,
             obj.scale.y += scale[1]
             obj.scale.z += scale[2]
 
+def remove_random_faces(
+   obj_or_collection_name: str, 
+   is_collection: bool,
+   removal_percentage: float = 0.5, 
+   seed: int = None
+):
+   """
+   Randomly remove faces from an object or all objects in a collection
+   
+   Args:
+   - obj_or_collection_name: Name of object or collection
+   - removal_percentage: Proportion of faces to remove (0.0 - 1.0)
+   - seed: Optional random seed for reproducibility
+   """
+   # Set random seed if provided
+   if seed is not None:
+       random.seed(seed)
+   
+   if is_collection:
+    collection = bpy.data.collections.get(obj_or_collection_name)
+    for collection_obj in collection.all_objects:
+           if collection_obj.type == 'MESH':
+               _remove_faces_from_mesh(collection_obj, removal_percentage)
+   else: 
+    obj = bpy.data.objects.get(obj_or_collection_name)
+    if obj and obj.type == 'MESH':
+       _remove_faces_from_mesh(obj, removal_percentage)
+    else:
+       raise ValueError(f"No object or collection found with name: {obj_or_collection_name}")
+
+def _remove_faces_from_mesh(mesh_obj, removal_percentage):
+   """Internal function to remove faces from a single mesh object"""
+   bpy.context.view_layer.objects.active = mesh_obj
+   bpy.ops.object.mode_set(mode='EDIT')
+   bpy.ops.mesh.select_mode(type='FACE')
+   
+   # Select mesh
+   bpy.ops.mesh.select_all(action='SELECT')
+   mesh = mesh_obj.data
+   # Get total face count
+   total_faces = len(mesh_obj.data.polygons)
+   faces_to_remove = int(total_faces * removal_percentage)
+
+   face_indices = list(range(len(mesh.polygons)))
+
+   # Randomly select faces to remove
+   selected_faces = random.sample(face_indices, faces_to_remove)
+
+    # Enter edit mode
+   bpy.ops.object.mode_set(mode='EDIT')
+   bpy.ops.mesh.select_mode(type='FACE')
+   bpy.ops.mesh.select_all(action='DESELECT')
+
+    # Select the chosen faces
+   bpy.ops.object.mode_set(mode='OBJECT')
+   for face_index in selected_faces:
+       mesh.polygons[face_index].select = True
+
+    # Switch back to edit mode and delete selected faces
+   bpy.ops.object.mode_set(mode='EDIT')
+   bpy.ops.mesh.delete(type='FACE')
+
+    # Return to object mode
+   bpy.ops.object.mode_set(mode='OBJECT')
+
+
 def _save_scene(name: str):
     bpy.ops.wm.save_mainfile(filepath=f"{name}.blend")
     
