@@ -2,7 +2,7 @@ start: expression+
 
 expression : /create/ THING params
            | /operation/ VAR params
-           | /save/
+           | /save/ STRING
            | /let/ VAR arithmetic
            | /let/ VAR /input/ "(" STRING ")"
 
