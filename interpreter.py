@@ -52,9 +52,11 @@ class BlenderASTInterpreter:
         operation = expr.children[0]
         operation_type = operation.type
         print("OP: ", operation)
+        print("OP_VAL: ", operation.value)
         print("OP_TYPE: ", operation.type)
         # Match against the specific grammar rules
         if operation.value == 'create':
+
             return self.interpret_create(expr.children)
         
         elif operation.value == 'operation':
@@ -65,8 +67,7 @@ class BlenderASTInterpreter:
         
         elif operation.value == 'let':
             # Two variants: let VAR arithmetic or let VAR input
-            if len(expr.children) == 3:
-                return self.interpret_let(expr.children)
+            return self.interpret_let(expr.children)
         
         return None
 
@@ -97,8 +98,7 @@ class BlenderASTInterpreter:
         
         elif thing_type == 'light':
             # Default to point light
-            light_type = parsed_params.get('type', 'POINT').upper()
-            _create_light(type=light_type, **parsed_params)
+            _create_light(**parsed_params)
         
         elif thing_type == 'camera':
             _create_camera(**parsed_params)
@@ -143,9 +143,10 @@ class BlenderASTInterpreter:
         """
         Interpret variable assignment
         """
+        print(children)
         var_name = children[1]
         value = self.parse_value(children[2])
-        
+    
         # Store in symbol table
         self.symbol_table[var_name] = value
         
@@ -173,17 +174,26 @@ class BlenderASTInterpreter:
         """
         Parse different types of values from the AST
         """
+        print("IN PARSE VALUE: ", value)
         if isinstance(value, Token):
+            print("+++++++++++++++++++++++++")
+            # print("VALUE: ", value)
+            print("VALUE_DATA: ", value.type)
             # Direct tokens (strings, numbers)
             if value.type == 'STRING':
                 return value.value.strip('"')
-            elif value.type in ['FLOAT', 'INTEGER']:
+            elif value.type == 'FLOAT':
                 return float(value.value)
+            elif value.type == 'INTEGER':
+                return int(value.value)
+            elif value.type == '__ANON_4':
+                return input(value.value)
             return value.value
         
         elif isinstance(value, Tree):
             print("---------------------")
-            print(value.data)
+            # print("VALUE: ", value)
+            print("VALUE_DATA: ", value.data)
             # More complex structures like tuples or arithmetic
             if value.data == 'data':
                 return self.parse_value(value.children[0])
@@ -196,16 +206,23 @@ class BlenderASTInterpreter:
             elif value.data == 'tuple':
                 print("TUPPLEEEEE")
                 # Convert tuple elements
+                # print("ELEMS: ", [self.parse_value(elem).strip('\'') for elem in value.children])
                 print("TUPLE: ", tuple(self.parse_value(elem) for elem in value.children))
                 return tuple(self.parse_value(elem) for elem in value.children)
             
+            elif value.data == 'term':
+                print("TERRRRMMM")
+                return self.parse_value(value.children[0])
+                        
             elif value.data == 'arithmetic':
                 print("ARRRITTHHHMETIC")
                 # Perform arithmetic operation
                 left = self.parse_value(value.children[0])
                 op = value.children[1]
                 right = self.parse_value(value.children[2])
-                
+
+                print("L: ", left)
+                print("R: ", right)
                 if op == '+':
                     return left + right
                 elif op == '-':
@@ -223,7 +240,6 @@ class BlenderASTInterpreter:
                     return self.parse_value(value.children[1])
                 else:
                     return -self.parse_value(value.children[1])
-                
         return value
 
     def save_scene(self, filep):
@@ -233,22 +249,27 @@ class BlenderASTInterpreter:
         bpy.ops.wm.save_mainfile(filepath=filep+".blend")
         return None
 
-def interpret_blender_ast(ast):
+def interpret_blender_ast(ast, print_st):
     """
     Top-level function to interpret a Blender AST
     """
     interpreter = BlenderASTInterpreter()
-    return interpreter.interpret(ast)
+    interpreter.interpret(ast)
+    
+    if print_st:
+        print(interpreter.symbol_table)
 
 # Example usage would look like:
-ast_1 = Tree(Token('RULE', 'start'), [Tree(Token('RULE', 'expression'), [Token('__ANON_0', 'create'), Token('THING', 'collection'), Tree(Token('RULE', 'params'), [Tree(Token('RULE', 'param'), [Token('VAR', 'name'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Token('STRING', '"myCollection"')])])])])])])
-ast_2 = Tree(Token('RULE', 'start'), [Tree(Token('RULE', 'expression'), [Token('__ANON_1', 'operation'), Token('VAR', 'transform'), Tree(Token('RULE', 'params'), [Tree(Token('RULE', 'param'), [Token('VAR', 'target'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Token('STRING', '"cube"')])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'scale'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'tuple'), [Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [Token('SIGN', '-'), Tree(Token('RULE', 'numeric'), [Token('INTEGER', '1')])])]), Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [Token('SIGN', '-'), Tree(Token('RULE', 'numeric'), [Token('INTEGER', '1')])])]), Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [Token('SIGN', '-'), Tree(Token('RULE', 'numeric'), [Token('INTEGER', '1')])])])])])])])])])
-ast_3 = Tree(Token('RULE', 'start'), [Tree(Token('RULE', 'expression'), [Token('__ANON_2', 'save')])])
-ast_4 = Tree(Token('RULE', 'start'), [Tree(Token('RULE', 'expression'), [Token('__ANON_3', 'let'), Token('VAR', 'x'), Tree(Token('RULE', 'arithmetic'), [Tree(Token('RULE', 'term'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '5')])])]), Token('PLUS', '+'), Tree(Token('RULE', 'term'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '3')])])])])])])
-ast_5 = Tree(Token('RULE', 'start'), [Tree(Token('RULE', 'expression'), [Token('__ANON_3', 'let'), Token('VAR', 'username'), Token('__ANON_4', 'input'), Token('STRING', '"Enter username:"')])])
-ast_6 = Tree(Token('RULE', 'start'), [Tree(Token('RULE', 'expression'), [Token('__ANON_0', 'create'), Token('THING', 'object'), Tree(Token('RULE', 'params'), [Tree(Token('RULE', 'param'), [Token('VAR', 'name'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Token('STRING', '"MyObject"')])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'position'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'tuple'), [Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('FLOAT', '1.5')])])]), Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('FLOAT', '2.0')])])]), Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('FLOAT', '3.0')])])])])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'color'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Token('STRING', '"red"')])])])])])])
-ast_7 = Tree(Token('RULE', 'start'), [Tree(Token('RULE', 'expression'), [Token('__ANON_1', 'operation'), Token('VAR', 'scale'), Tree(Token('RULE', 'params'), [Tree(Token('RULE', 'param'), [Token('VAR', 'factor'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '2')])])])])])])])])
-ast_8 = Tree(Token('RULE', 'start'), [Tree(Token('RULE', 'expression'), [Token('__ANON_0', 'create'), Token('THING', 'object'), Tree(Token('RULE', 'params'), [Tree(Token('RULE', 'param'), [Token('VAR', 'name'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Token('STRING', '"myobj"')])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'obj_type'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Token('STRING', '"cube"')])])])])]), Tree(Token('RULE', 'expression'), [Token('__ANON_0', 'create'), Token('THING', 'object'), Tree(Token('RULE', 'params'), [Tree(Token('RULE', 'param'), [Token('VAR', 'name'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Token('STRING', '"spherey"')])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'obj_type'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Token('STRING', '"sphere"')])])])])]), Tree(Token('RULE', 'expression'), [Token('__ANON_2', 'save'), Token('STRING', '"savefile"')])])
+collection_creation = Tree(Token('RULE', 'start'), [Tree(Token('RULE', 'expression'), [Token('__ANON_0', 'create'), Token('THING', 'collection'), Tree(Token('RULE', 'params'), [Tree(Token('RULE', 'param'), [Token('VAR', 'name'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Token('STRING', '"random_collection"')])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'object_types'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'tuple'), [Tree(Token('RULE', 'prim'), [Token('STRING', '"cube"')]), Tree(Token('RULE', 'prim'), [Token('STRING', '"sphere"')]), Tree(Token('RULE', 'prim'), [Token('STRING', '"cylinder"')])])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'count'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'tuple'), [Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '10')])])])])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'placement'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Token('STRING', '"sphere"')])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'start_xyz'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'tuple'), [Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '0')])])]), Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '0')])])]), Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '0')])])])])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'sph_radius'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('FLOAT', '5.0')])])])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'rand'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Token('STRING', '"uniform"')])])])])]), Tree(Token('RULE', 'expression'), [Token('__ANON_2', 'save'), Token('STRING', '"nefile"')])])
 
+object_creation = Tree(Token('RULE', 'start'), [Tree(Token('RULE', 'expression'), [Token('__ANON_0', 'create'), Token('THING', 'object'), Tree(Token('RULE', 'params'), [Tree(Token('RULE', 'param'), [Token('VAR', 'name'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Token('STRING', '"green_sphere"')])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'obj_type'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Token('STRING', '"sphere"')])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'location'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'tuple'), [Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '4')])])]), Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '5')])])]), Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '6')])])])])])])])]), Tree(Token('RULE', 'expression'), [Token('__ANON_2', 'save'), Token('STRING', '"zfile"')])])
 
-interpret_blender_ast(ast_8)
+light_creation = Tree(Token('RULE', 'start'), [Tree(Token('RULE', 'expression'), [Token('__ANON_0', 'create'), Token('THING', 'light'), Tree(Token('RULE', 'params'), [Tree(Token('RULE', 'param'), [Token('VAR', 'name'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Token('STRING', '"area_light"')])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'type'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Token('STRING', '"AREA"')])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'location'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'tuple'), [Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '0')])])]), Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '0')])])]), Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '5')])])])])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'energy'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '500')])])])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'radius'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('FLOAT', '0.5')])])])])])])]), Tree(Token('RULE', 'expression'), [Token('__ANON_2', 'save'), Token('STRING', '"zfile"')])])
+
+camera_creation = Tree(Token('RULE', 'start'), [Tree(Token('RULE', 'expression'), [Token('__ANON_0', 'create'), Token('THING', 'camera'), Tree(Token('RULE', 'params'), [Tree(Token('RULE', 'param'), [Token('VAR', 'name'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Token('STRING', '"fixed_camera"')])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'target_coord'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'tuple'), [Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '0')])])]), Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '0')])])]), Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '0')])])])])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'r'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '15')])])])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'theta'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('FLOAT', '0.785')])])])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'phi'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('FLOAT', '0.785')])])])])])])]), Tree(Token('RULE', 'expression'), [Token('__ANON_2', 'save'), Token('STRING', '"zfile"')])])
+
+operation_test = Tree(Token('RULE', 'start'), [Tree(Token('RULE', 'expression'), [Token('__ANON_1', 'operation'), Token('VAR', 'object'), Tree(Token('RULE', 'params'), [Tree(Token('RULE', 'param'), [Token('VAR', 'name'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Token('STRING', '"rotate_sphere"')])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'type'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Token('STRING', '"rotate"')])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'rotation'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'tuple'), [Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '0')])])]), Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '45')])])]), Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '0')])])])])])])])]), Tree(Token('RULE', 'expression'), [Token('__ANON_2', 'save'), Token('STRING', '"zfile"')])])
+
+# interpret_blender_ast(light_creation, 1)
+interpret_blender_ast(operation_test, 1)
+

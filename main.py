@@ -152,6 +152,7 @@ def _create_collection(
     circle_radius: float = None,
     circle_exclude_axis: str = None,
 ) -> None:
+    count = [int(elem) for elem in count]
     collection = bpy.data.collections.new(name = name)
     bpy.context.scene.collection.children.link(collection)
     collections[name] = collection
@@ -296,7 +297,10 @@ def _create_light(
         light_data.size = radius
     
     if collection:
-        collections[collection].objects.link(light_object)
+        if collection in bpy.data.collections:
+            collections[collection].objects.link(light_object)
+        else:
+            raise ValueError(f"No collection found with name: {collection}")
     else:
         bpy.context.collection.objects.link(light_object)
 
