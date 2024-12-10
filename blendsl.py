@@ -1,7 +1,7 @@
 import argparse
 
-from new_parser import parse_file
-from new_interpreter import interpret_ast
+from parser import parse_file
+from interpreter import interpret_ast
 
 parser = argparse.ArgumentParser()
 parser.add_argument('filename')

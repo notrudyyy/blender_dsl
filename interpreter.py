@@ -1,9 +1,4 @@
-import bpy
-import numpy as np
-from lark import Tree, Token
-
-# Import the specific functions
-from main import (
+from bpy_wrapper import (
     _create_object, 
     _create_light, 
     _create_collection, 
@@ -12,263 +7,165 @@ from main import (
     _show_object, 
     _hide_collection, 
     _show_collection,
-    _transform_object,
-    _transform_collection,
+    _translate_object,
+    _rotate_object,
+    _scale_object,
+    _translate_collection,
+    _rotate_collection,
+    _scale_collection,
+    _save_scene,
+    _remove_random_faces_object,
+    _remove_random_faces_collection
 )
 
-class BlenderASTInterpreter:
-    def __init__(self):
-        """
-        Initialize the AST interpreter
-        """
-        self.symbol_table = {}
+from lark import Tree
 
-    def interpret(self, ast):
-        """
-        Main interpretation method for the entire AST
-        """
-        if not isinstance(ast, Tree) or ast.data != 'start':
-            raise ValueError("Invalid AST structure")
-        
-        # Process each expression in the AST
-        results = []
-        for expr in ast.children:
-            print("EXP: ", expr)
-            result = self.interpret_expression(expr)
-            print("RESULT: ", result)
-            if result is not None:
-                results.append(result)
-        
-        return results
+from pathvalidate import is_valid_filename
 
-    def interpret_expression(self, expr):
-        """
-        Interpret individual expressions
-        """
-        if not isinstance(expr, Tree) or expr.data != 'expression':
-            raise ValueError("Invalid expression structure")
-        
-        # The first child is the operation type
-        operation = expr.children[0]
-        operation_type = operation.type
-        print("OP: ", operation)
-        print("OP_VAL: ", operation.value)
-        print("OP_TYPE: ", operation.type)
-        # Match against the specific grammar rules
-        if operation.value == 'create':
-            return self.interpret_create(expr.children)
-        
-        elif operation.value == 'operation':
-            return self.interpret_operation(expr.children)
-        
-        elif operation.value == 'save':
-            return self.save_scene(self.parse_value(expr.children[1]))
-        
-        elif operation.value == 'let':
-            # Two variants: let VAR arithmetic or let VAR input
-            return self.interpret_let(expr.children)
-        
-        return None
+create_types = {
+    "object": _create_object,
+    "light": _create_light,
+    "collection": _create_collection,
+    "camera": _create_camera,
+}
 
-    def interpret_create(self, children):
-        """
-        Interpret create operations
-        """
-        # Extract create keyword, thing type, and parameters
-        create_keyword = children[0]
-        thing_type = children[1].value
-        params = self.extract_params(children[2])
-        
-        # Prepare parameters
-        parsed_params = {}
-        for param_name, param_value in params.items():
-            print("Parsing: ", param_value)
-            parsed_params[param_name] = self.parse_value(param_value)
-            print("Result: ", parsed_params[param_name])
-        print(parsed_params)
+operation_types = {
+    "translate": {
+        "object": _translate_object,
+        "collection": _translate_collection,
+    },
+    "rotate": {
+        "object": _rotate_object,
+        "collection": _rotate_collection,
+    },
+    "scale": {
+        "object": _scale_object,
+        "collection": _scale_collection,
+    },
+    "hide": {
+        "object": _hide_object,
+        "collection": _hide_collection,
+    },
+    "show": {
+        "object": _show_object,
+        "collection": _show_collection,
+    },
+    "remove_faces": {
+        "object": _remove_random_faces_object,
+        "collection": _remove_random_faces_collection,
+    }
+}
 
-        # Dispatch to appropriate creation method
-        if thing_type == 'object':
-            _create_object(**parsed_params)
-        
-        elif thing_type == 'collection':
+env = {}
+
+def interpret_ast(ast: Tree):
+    if ast.data == "start":
+        for child in ast.children:
+            interpret_ast(child)
+    elif ast.data == "expression":
+        expression_type = ast.children[0]
+        if expression_type == "create":
+            create_type = ast.children[1]
             
-            _create_collection(**parsed_params)
-        
-        elif thing_type == 'light':
-            # Default to point light
-            _create_light(**parsed_params)
-        
-        elif thing_type == 'camera':
-            _create_camera(**parsed_params)
-        
-        return None
+            if create_type not in create_types:
+                raise ValueError(f"{create_type} is not a valid thing that can be created!")
 
-    def interpret_operation(self, children):
-        """
-        Interpret transform or other operations
+            create_params = interpret_ast(ast.children[2])
 
-        syntax: 
-        """
-        # Extract operation details
-        operation_type = children[1]
-        params = self.extract_params(children[2])
-        print("OP_TYPE: ", operation_type)
-        # print(params)
+            create_types[create_type](**create_params)
         
-        # Prepare parameters
-        parsed_params = {}
-        for param_name, param_value in params.items():
-            print("PARAM NAME: ", param_name)
-            print("Parsing: ", param_value)
-            parsed_params[param_name] = self.parse_value(param_value)
-            print("Result: ", parsed_params[param_name])
-        print(parsed_params)
+        elif expression_type == "operation":
+            operation_type = ast.children[1]
             
-        
-        # Dispatch to appropriate transformation method
-        if operation_type == 'transform':
-            # Determine transform type (translate/rotate/scale)
-            if 'location' in parsed_params:
-                _transform_object(type='translate', **parsed_params)
-            elif 'rotation' in parsed_params:
-                _transform_object(type='rotate', **parsed_params)
-            elif 'scale' in parsed_params:
-                _transform_object(type='scale', **parsed_params)
-        
-        return None
+            if operation_type not in operation_types:
+                raise ValueError(f"{operation_type} is not a valid operation!")
+            
+            operation_params = interpret_ast(ast.children[2])
 
-    def interpret_let(self, children):
-        """
-        Interpret variable assignment
-        """
-        print(children)
-        var_name = children[1]
-        value = self.parse_value(children[2])
+            operation_target = operation_params["op_target"]
+
+            del operation_params["op_target"]
+
+            operation_types[operation_type][operation_target](**operation_params)
+        
+        elif expression_type == "save":
+            save_file = interpret_ast(ast.children[1])
+
+            if not is_valid_filename(save_file):
+                raise ValueError(f"{save_file} is not a valid filename!")
+            
+            _save_scene(save_file)
+        
+        elif expression_type == "let":
+            var_name = ast.children[1]
+            
+            if ast.children[2] == "input":
+                type_cast = eval(ast.children[4].data)
+
+                input_string = ast.children[3].data
+                
+                env[var_name] = type_cast(input(input_string))
+            else:
+                var_value = interpret_ast(ast.children[2])
+                
+                env[var_name] = var_value
     
-        # Store in symbol table
-        self.symbol_table[var_name] = value
+    elif ast.data == "arithmetic":
+        binary_op = ast.children[1].data
         
-        return None
+        lval = interpret_ast(ast.children[0])
+        rval = interpret_ast(ast.children[2])
 
-    def extract_params(self, params_tree):
-        """
-        Extract parameters from the AST params tree
-        """
-        if not isinstance(params_tree, Tree) or params_tree.data != 'params':
-            return {}
+        return eval(f"{lval} {binary_op} {rval}")
+    
+    elif ast.data == "term":
+        if type(ast.children[0]) == Tree:
+            return interpret_ast(ast.children[0])
+        var_name = ast.children[0]
         
+        if var_name not in env:
+            raise ValueError(f"{var_name} is not a valid identifier!")
+        
+        return env[var_name]
+    
+    elif ast.data == "params":
         param_dict = {}
-        for param in params_tree.children:
-            # Each param is a Tree with 'param' data
-            if isinstance(param, Tree) and param.data == 'param':
-                # Extract parameter name and value
-                param_name = param.children[0].value
-                param_value = param.children[2]
-                param_dict[param_name] = param_value
+        for param in ast.children:
+            par, val = interpret_ast(param)
+            param_dict[par] = val
         
         return param_dict
-
-    def parse_value(self, value):
-        """
-        Parse different types of values from the AST
-        """
-        print("IN PARSE VALUE: ", value)
-        if isinstance(value, Token):
-            print("+++++++++++++++++++++++++")
-            # print("VALUE: ", value)
-            print("VALUE_DATA: ", value.type)
-            # Direct tokens (strings, numbers)
-            if value.type == 'STRING':
-                return value.value.strip('"')
-            elif value.type == 'FLOAT':
-                return float(value.value)
-            elif value.type == 'INTEGER':
-                return int(value.value)
-            elif value.type == '__ANON_4':
-                return input(value.value)
-            return value.value
-        
-        elif isinstance(value, Tree):
-            print("---------------------")
-            # print("VALUE: ", value)
-            print("VALUE_DATA: ", value.data)
-            # More complex structures like tuples or arithmetic
-            if value.data == 'data':
-                return self.parse_value(value.children[0])
-
-            elif value.data == 'prim':
-                print("PRIMMMITIVEE")
-                # Primitive value
-                return self.parse_value(value.children[0])
-            
-            elif value.data == 'tuple':
-                print("TUPPLEEEEE")
-                # Convert tuple elements
-                # print("ELEMS: ", [self.parse_value(elem).strip('\'') for elem in value.children])
-                print("TUPLE: ", tuple(self.parse_value(elem) for elem in value.children))
-                return tuple(self.parse_value(elem) for elem in value.children)
-            
-            elif value.data == 'term':
-                print("TERRRRMMM")
-                return self.parse_value(value.children[0])
-                        
-            elif value.data == 'arithmetic':
-                print("ARRRITTHHHMETIC")
-                # Perform arithmetic operation
-                left = self.parse_value(value.children[0])
-                op = value.children[1]
-                right = self.parse_value(value.children[2])
-
-                print("L: ", left)
-                print("R: ", right)
-                if op == '+':
-                    return left + right
-                elif op == '-':
-                    return left - right
-                elif op == '*':
-                    return left * right
-                elif op == '/':
-                    return left / right
-                
-            elif value.data == 'numeric':
-                return self.parse_value(value.children[0])
-            
-            elif value.data == 'signed_numeric':
-                if value.children[0] == None or value.children[0] == '+':
-                    return self.parse_value(value.children[1])
-                else:
-                    return -self.parse_value(value.children[1])
-        return value
-
-    def save_scene(self, filep):
-        """
-        Save the current Blender scene
-        """
-        bpy.ops.wm.save_mainfile(filepath=filep+".blend")
-        return None
-
-def interpret_blender_ast(ast, print_st):
-    """
-    Top-level function to interpret a Blender AST
-    """
-    interpreter = BlenderASTInterpreter()
-    interpreter.interpret(ast)
     
-    if print_st:
-        print(interpreter.symbol_table)
+    elif ast.data == "param":
+        return (ast.children[0], interpret_ast(ast.children[1]))
+    
+    elif ast.data == "data":
+        return interpret_ast(ast.children[0])
+    
+    elif ast.data == "prim":
+        if type(ast.children[0]) == Tree:
+            return interpret_ast(ast.children[0])
+        return ast.children[0]
+    
+    elif ast.data == "signed_numeric":
+        sign = ast.children[0].data if ast.children[0] is not None else ""
+        value = interpret_ast(ast.children[1])
 
-# Example usage would look like:
-collection_creation = Tree(Token('RULE', 'start'), [Tree(Token('RULE', 'expression'), [Token('__ANON_0', 'create'), Token('THING', 'collection'), Tree(Token('RULE', 'params'), [Tree(Token('RULE', 'param'), [Token('VAR', 'name'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Token('STRING', '"random_collection"')])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'object_types'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'tuple'), [Tree(Token('RULE', 'prim'), [Token('STRING', '"cube"')]), Tree(Token('RULE', 'prim'), [Token('STRING', '"sphere"')]), Tree(Token('RULE', 'prim'), [Token('STRING', '"cylinder"')])])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'count'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'tuple'), [Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '10')])])])])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'placement'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Token('STRING', '"sphere"')])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'start_xyz'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'tuple'), [Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '0')])])]), Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '0')])])]), Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '0')])])])])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'sph_radius'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('FLOAT', '5.0')])])])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'rand'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Token('STRING', '"uniform"')])])])])]), Tree(Token('RULE', 'expression'), [Token('__ANON_2', 'save'), Token('STRING', '"nefile"')])])
+        if sign == "-":
+            return -value
+        return value
+    
+    elif ast.data == "numeric":
+        numeric_type = str(ast.children[0].type)
 
-object_creation = Tree(Token('RULE', 'start'), [Tree(Token('RULE', 'expression'), [Token('__ANON_0', 'create'), Token('THING', 'object'), Tree(Token('RULE', 'params'), [Tree(Token('RULE', 'param'), [Token('VAR', 'name'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Token('STRING', '"green_sphere"')])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'obj_type'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Token('STRING', '"sphere"')])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'location'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'tuple'), [Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '4')])])]), Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '5')])])]), Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '6')])])])])])])])]), Tree(Token('RULE', 'expression'), [Token('__ANON_2', 'save'), Token('STRING', '"zfile"')])])
-
-light_creation = Tree(Token('RULE', 'start'), [Tree(Token('RULE', 'expression'), [Token('__ANON_0', 'create'), Token('THING', 'light'), Tree(Token('RULE', 'params'), [Tree(Token('RULE', 'param'), [Token('VAR', 'name'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Token('STRING', '"area_light"')])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'type'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Token('STRING', '"AREA"')])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'location'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'tuple'), [Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '0')])])]), Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '0')])])]), Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '5')])])])])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'energy'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '500')])])])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'radius'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('FLOAT', '0.5')])])])])])])]), Tree(Token('RULE', 'expression'), [Token('__ANON_2', 'save'), Token('STRING', '"zfile"')])])
-
-camera_creation = Tree(Token('RULE', 'start'), [Tree(Token('RULE', 'expression'), [Token('__ANON_0', 'create'), Token('THING', 'camera'), Tree(Token('RULE', 'params'), [Tree(Token('RULE', 'param'), [Token('VAR', 'name'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Token('STRING', '"fixed_camera"')])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'target_coord'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'tuple'), [Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '0')])])]), Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '0')])])]), Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '0')])])])])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'r'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '15')])])])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'theta'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('FLOAT', '0.785')])])])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'phi'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('FLOAT', '0.785')])])])])])])]), Tree(Token('RULE', 'expression'), [Token('__ANON_2', 'save'), Token('STRING', '"zfile"')])])
-
-operation_test = Tree(Token('RULE', 'start'), [Tree(Token('RULE', 'expression'), [Token('__ANON_1', 'operation'), Token('VAR', 'object'), Tree(Token('RULE', 'params'), [Tree(Token('RULE', 'param'), [Token('VAR', 'name'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Token('STRING', '"rotate_sphere"')])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'type'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'prim'), [Token('STRING', '"rotate"')])])]), Tree(Token('RULE', 'param'), [Token('VAR', 'rotation'), Token('EQUALS', '='), Tree(Token('RULE', 'data'), [Tree(Token('RULE', 'tuple'), [Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '0')])])]), Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '45')])])]), Tree(Token('RULE', 'prim'), [Tree(Token('RULE', 'signed_numeric'), [None, Tree(Token('RULE', 'numeric'), [Token('INTEGER', '0')])])])])])])])]), Tree(Token('RULE', 'expression'), [Token('__ANON_2', 'save'), Token('STRING', '"zfile"')])])
-
-# interpret_blender_ast(light_creation, 1)
-interpret_blender_ast(operation_test, 1)
-
+        if numeric_type == "FLOAT":
+            return float(ast.children[0])
+        return int(ast.children[0])
+    
+    elif ast.data == "tuple":
+        if len(ast.children) == 0:
+            return tuple()
+        return tuple(interpret_ast(item) for item in ast.children)
+    
+    elif ast.data == "string":
+        return ast.children[0][1:-1]
