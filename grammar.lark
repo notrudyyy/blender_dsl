@@ -2,9 +2,13 @@ start: expression+
 
 expression : /create/ THING params
            | /operation/ VAR params
-           | /save/ STRING
-           | /let/ VAR arithmetic
-           | /let/ VAR /input/ "(" STRING ")"
+           | /save/ "(" string ")"
+           | /let/ VAR data
+           | /let/ VAR /input/ "(" string "," INPUTCAST")"
+
+INPUTCAST : "int"
+           | "float"
+           | "string"
 
 arithmetic : term PLUS term
            | term MINUS term
@@ -18,22 +22,21 @@ term       : signed_numeric
 params     : "(" param ("," param)* ")"
            | "()"
 
-param      : VAR EQUALS data
+param      : VAR "=" data
 
 data       : tuple
            | prim
 
-prim       : STRING
-           | signed_numeric
-           | arithmetic
+prim       : string
+           | term
 
 signed_numeric : [SIGN] numeric
 
 numeric    : FLOAT
            | INTEGER
 
-tuple      : "(" prim ("," prim)* ")"
-           | "()"
+tuple      : "[" prim ("," prim)* "]"
+           | "[]"
 
 THING      : "collection"
            | "object"
@@ -50,9 +53,7 @@ TIMES      : /\*/
 
 DIVIDE     : /\//
 
-EQUALS     : /=/
-
-STRING     : /"[^"]*"/
+string     : /"[^"]*"/
 
 SIGN       : /[+-]/  // Define a sign terminal
 

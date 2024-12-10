@@ -2,6 +2,7 @@ import bpy
 import random
 import numpy as np
 import math
+import mathutils
 
 for obj in bpy.data.objects:
     bpy.data.objects.remove(obj)
@@ -32,20 +33,39 @@ def __calc_center_pt(mesh_objs):
     return center_point
 
 def _create_camera(
-    name: str | None,
-    target_coord: list = None,
-    target_collection: str = None,
-    r=10,
-    theta=0,
-    phi=0,
+    name: str | None = None,
+    target_coord: list | None = None,
+    target_collection: str | None = None,
+    r: float = 10,
+    theta: float = 0,
+    phi: float = 0,
 ):
-    if target_collection and target_coord or (not target_collection and not target_coord):
-        raise ValueError()
+    """
+    Create a camera positioned using spherical coordinates relative to a target.
     
+    Args:
+        name: Optional name for the camera
+        target_coord: Target coordinate to point the camera towards
+        target_collection: Alternatively, specify a collection to calculate center point
+        r: Radius (distance from target)
+        theta: Azimuthal angle in the x-y plane from the x-axis (in degrees)
+        phi: Polar angle from the z-axis (in degrees)
+    
+    Returns:
+        bpy.types.Object: Created camera object
+    """
+    # Validate input
+    if bool(target_collection) == bool(target_coord):
+        raise ValueError("Exactly one of target_collection or target_coord must be specified")
+    
+    # Calculate target coordinate if collection is provided
     if target_collection:
         target_coord = __calc_center_pt(
-            mesh_objs=[obj for obj in collections[target_collection].objects if obj.type == "MESH"]
+            mesh_objs=[obj for obj in bpy.data.collections[target_collection].all_objects if obj.type == "MESH"]
         )
+    
+    phi = (phi%360)*math.pi/180
+    theta = (theta%360)*math.pi/180
 
     # Calculate camera position using spherical coordinates
     x = target_coord[0] + r * math.sin(phi) * math.cos(theta)
@@ -56,39 +76,46 @@ def _create_camera(
     bpy.ops.object.camera_add(
         location=(x, y, z),
         enter_editmode=False,
-        align='VIEW'
     )
     
     # Get the camera object
     camera = bpy.context.active_object
+    
+    # Set name if provided
     if name:
         camera.name = name
-    
-    # Calculate rotation to point at target
-    # Vector from camera to target
-    direction = np.array(target_coord) - np.array([x, y, z])
-    
-    # Normalize the direction vector
-    direction = direction / np.linalg.norm(direction)
-    
-    # Calculate Euler angles
-    # Using the standard convention in Blender (XYZ rotation order)
-    # Adapted from Blender's math conventions
-    xy_dist = math.sqrt(direction[0]**2 + direction[1]**2)
-    
-    # Pitch (rotation around X)
-    pitch = -math.atan2(direction[2], xy_dist)
-    
-    # Yaw (rotation around Z)
-    yaw = -math.atan2(direction[1], direction[0])
-    
-    # Roll (rotation around Y) - typically 0 for camera pointing
-    roll = 0
-    
-    # Set camera rotation
-    camera.rotation_euler = (pitch, roll, yaw)
-    
-    return camera
+
+    def point_at(obj, target, roll=0):
+        """
+        Rotate obj to look at target
+
+        :arg obj: the object to be rotated. Usually the camera
+        :arg target: the location (3-tuple or Vector) to be looked at
+        :arg roll: The angle of rotation about the axis from obj to target in radians. 
+
+        Based on: https://blender.stackexchange.com/a/5220/12947 (ideasman42)      
+        """
+        if not isinstance(target, mathutils.Vector):
+            target = mathutils.Vector(target)
+        loc = obj.location
+        # direction points from the object to the target
+        direction = target - loc
+        tracker, rotator = (('-Z', 'Y'),'Z') if obj.type=='CAMERA' else (('X', 'Z'),'Y') #because new cameras points down(-Z), usually meshes point (-Y)
+        quat = direction.to_track_quat(*tracker)
+        
+        # /usr/share/blender/scripts/addons/add_advanced_objects_menu/arrange_on_curve.py
+        quat = quat.to_matrix().to_4x4()
+        rollMatrix = mathutils.Matrix.Rotation(roll, 4, rotator)
+
+        # remember the current location, since assigning to obj.matrix_world changes it
+        loc = loc.to_tuple()
+        #obj.matrix_world = quat * rollMatrix
+        # in blender 2.8 and above @ is used to multiply matrices
+        # using * still works but results in unexpected behaviour!
+        obj.matrix_world = quat @ rollMatrix
+        obj.location = loc
+
+    point_at(camera, target_coord)
 
 def _create_object(
     obj_type: str,
@@ -137,22 +164,24 @@ def _create_object(
 
 def _create_collection(
     name: str,
-    object_types: list,
-    count: list,
+    obj_types: list,
+    obj_counts: list,
     placement: str,
     rand: str = None,
-    start_xyz: list = None,
+    lin_start_xyz: list = None,
     lin_distance: float = None,
     lin_axis: str = None,
     lin_noisy_offset: float = None,
     weights: list = None,
     sph_radius: float = None,
+    sph_center: list = None,
     plane_corner1: list = None,
     plane_corner2: list = None,
     circle_radius: float = None,
+    circle_center: list = None,
     circle_exclude_axis: str = None,
 ) -> None:
-    count = [int(elem) for elem in count]
+    obj_counts = [int(elem) for elem in obj_counts]
     collection = bpy.data.collections.new(name = name)
     bpy.context.scene.collection.children.link(collection)
     collections[name] = collection
@@ -168,11 +197,11 @@ def _create_collection(
         "weighted": __weighted_sampler,
     }
 
-    total_num_objs = np.sum(count)
+    total_num_objs = np.sum(obj_counts)
 
     if "linear" in placement:
         obj_posns = np.ndarray((total_num_objs, 3))
-        obj_posns[:] = start_xyz
+        obj_posns[:] = lin_start_xyz
         obj_posns[:,axis_to_idx[lin_axis]] = np.arange(total_num_objs)*lin_distance
         
         if "gauss" in placement:
@@ -211,31 +240,31 @@ def _create_collection(
                 idxs.append(axis_to_idx[axis])
 
         obj_posns = np.ndarray((total_num_objs, 3))
-        obj_posns[:] = start_xyz
+        obj_posns[:] = circle_center
         obj_posns[:,  idxs[0]] += r * np.cos(theta)
         obj_posns[:,  idxs[1]] += r * np.sin(theta)
     elif "sphere" in placement:
         obj_posns = np.random.normal(size=(total_num_objs, 3))
         lambda_vals = (sph_radius*(np.random.uniform(0, 1, size=total_num_objs))**(1/3)) / np.sqrt(np.sum(obj_posns**2, axis=1))
         obj_posns = obj_posns * lambda_vals[:, np.newaxis]
-        obj_posns[:] += start_xyz
+        obj_posns[:] += sph_center
     else:
         raise NotImplementedError()
 
-    if (len(count) != len(object_types)):
-        if len(count) != 1:
+    if (len(obj_counts) != len(obj_types)):
+        if len(obj_counts) != 1:
             raise ValueError
         if rand:
-            for i in range(count[0]):
+            for i in range(obj_counts[0]):
                 _create_object(
-                    obj_type=random_samplers[rand](object_types, weights=weights),
+                    obj_type=random_samplers[rand](obj_types, weights=weights),
                     name = None,
                     collection = name,
                     location=obj_posns[i],
                 )
         else:
-            for obj_type in object_types:
-                for i in range(count[0]):
+            for obj_type in obj_types:
+                for i in range(obj_counts[0]):
                     _create_object(
                         obj_type=obj_type,
                         name=None,
@@ -243,13 +272,13 @@ def _create_collection(
                         location=obj_posns[i],
                     )
     else:
-        for idx, (obj_type, cnt) in enumerate(zip(object_types, count)):
+        for idx, (obj_type, cnt) in enumerate(zip(obj_types, obj_counts)):
             for i in range(cnt):
                 _create_object(
                     obj_type=obj_type,
                     name=None,
                     collection = name,
-                    location=obj_posns[np.sum(count[:idx], dtype=int).item()+i],
+                    location=obj_posns[np.sum(obj_counts[:idx], dtype=int).item()+i],
                 )
 
 def _create_light(
@@ -378,83 +407,81 @@ def _show_collection(name: str, viewport: bool = True, render: bool = True) -> N
     else:
         raise ValueError(f"Collection '{name}' not found")
 
-def _transform_object(name: str, 
-                      type: str,
-                      location: tuple = (0, 0, 0),
-                      rotation: tuple = (0, 0, 0),
-                      scale: tuple = (1, 1, 1)):
+def _translate_object(name: str, 
+                      translation: tuple = (0, 0, 0)):
     obj = bpy.data.objects.get(name)
     if not obj:
         raise ValueError(f"Object {name} not found")
-    if type == 'translate':
-        obj.location.x += location[0]
-        obj.location.y += location[1]
-        obj.location.z += location[2]
-    elif type == 'rotate':
+    obj.location.x += translation[0]
+    obj.location.y += translation[1]
+    obj.location.z += translation[2]
+        
+def _rotate_object(name: str, 
+                   rotation: tuple = (0, 0, 0)):
+    obj = bpy.data.objects.get(name)
+    if not obj:
+        raise ValueError(f"Object {name} not found")
+    obj.rotation_euler.x += rotation[0]
+    obj.rotation_euler.y += rotation[1]
+    obj.rotation_euler.z += rotation[2]
+
+def _scale_object(name: str,
+                  scale: tuple = (0, 0, 0)):
+    obj = bpy.data.objects.get(name)
+    if not obj:
+        raise ValueError(f"Object {name} not found")
+    obj.scale.x += scale[0]
+    obj.scale.y += scale[1]
+    obj.scale.z += scale[2]
+
+def _translate_collection(name: str, 
+                      translation: tuple = (0, 0, 0)):
+    collection = bpy.data.collections[name]
+    if not collection:
+        raise ValueError(f"Collections {name} not found")
+    for obj in collection.objects:
+        obj.location.x += translation[0]
+        obj.location.y += translation[1]
+        obj.location.z += translation[2]
+        
+def _rotate_collection(name: str, 
+                   rotation: tuple = (0, 0, 0)):
+    collection = bpy.data.collections[name]
+    if not collection:
+        raise ValueError(f"Collections {name} not found")
+    for obj in collection.objects:
         obj.rotation_euler.x += rotation[0]
         obj.rotation_euler.y += rotation[1]
         obj.rotation_euler.z += rotation[2]
-    elif type == 'scale':
+
+def _scale_collection(name: str,
+                  scale: tuple = (0, 0, 0)):
+    collection = bpy.data.collections[name]
+    if not collection:
+        raise ValueError(f"Collections {name} not found")
+    for obj in collection.objects:
         obj.scale.x += scale[0]
         obj.scale.y += scale[1]
         obj.scale.z += scale[2]
 
-    
-def _transform_collection(name: str,
-                          type: str,
-                          location: tuple = (0, 0, 0),
-                          rotation: tuple = (0, 0, 0),
-                          scale: tuple = (1, 1, 1)):
-    collection = bpy.data.collections[name]
-    if not collection:
-        raise ValueError(f"Collections {name} not found")
-    if type == 'translate':
-        for obj in collection.objects:
-            obj.location.x += location[0]
-            obj.location.y += location[1]
-            obj.location.z += location[2]
-    elif type == 'rotate':
-        for obj in collection.objects:
-            obj.rotation.x += rotation[0]
-            obj.rotation.y += rotation[1]
-            obj.rotation.z += rotation[2]
-    elif type == 'scale':
-        for obj in collection.objects:
-            obj.scale.x += scale[0]
-            obj.scale.y += scale[1]
-            obj.scale.z += scale[2]
-
-def remove_random_faces(
-   obj_or_collection_name: str, 
-   is_collection: bool,
-   removal_percentage: float = 0.5, 
-   seed: int = None
+def _remove_random_faces_collection(
+   name: str, 
+   removal_fraction: float = 0.5, 
 ):
-   """
-   Randomly remove faces from an object or all objects in a collection
-   
-   Args:
-   - obj_or_collection_name: Name of object or collection
-   - removal_percentage: Proportion of faces to remove (0.0 - 1.0)
-   - seed: Optional random seed for reproducibility
-   """
-   # Set random seed if provided
-   if seed is not None:
-       random.seed(seed)
-   
-   if is_collection:
-    collection = bpy.data.collections.get(obj_or_collection_name)
+    collection = bpy.data.collections.get(name)
     for collection_obj in collection.all_objects:
-           if collection_obj.type == 'MESH':
-               _remove_faces_from_mesh(collection_obj, removal_percentage)
-   else: 
-    obj = bpy.data.objects.get(obj_or_collection_name)
-    if obj and obj.type == 'MESH':
-       _remove_faces_from_mesh(obj, removal_percentage)
-    else:
-       raise ValueError(f"No object or collection found with name: {obj_or_collection_name}")
+        if collection_obj.type == 'MESH':
+            __remove_faces_from_mesh(collection_obj, removal_fraction)
 
-def _remove_faces_from_mesh(mesh_obj, removal_percentage):
+def _remove_random_faces_object(
+    name: str,
+    removal_fraction: float = 0.5,
+):
+    obj = bpy.data.objects.get(name)
+    if obj and obj.type == 'MESH':
+        __remove_faces_from_mesh(obj, removal_fraction)
+
+def __remove_faces_from_mesh(mesh_obj, removal_fraction):
    """Internal function to remove faces from a single mesh object"""
    bpy.context.view_layer.objects.active = mesh_obj
    bpy.ops.object.mode_set(mode='EDIT')
@@ -465,7 +492,7 @@ def _remove_faces_from_mesh(mesh_obj, removal_percentage):
    mesh = mesh_obj.data
    # Get total face count
    total_faces = len(mesh_obj.data.polygons)
-   faces_to_remove = int(total_faces * removal_percentage)
+   faces_to_remove = int(total_faces * removal_fraction)
 
    face_indices = list(range(len(mesh.polygons)))
 

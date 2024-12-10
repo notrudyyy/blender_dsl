@@ -56,7 +56,6 @@ class BlenderASTInterpreter:
         print("OP_TYPE: ", operation.type)
         # Match against the specific grammar rules
         if operation.value == 'create':
-
             return self.interpret_create(expr.children)
         
         elif operation.value == 'operation':
